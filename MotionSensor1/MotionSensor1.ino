@@ -1,12 +1,9 @@
 //#include <ThingSpeak.h>
 #include <Ethernet.h>
 #include <SPI.h>
-//#include <DateTime.h>
-//#include <DateTimeStrings.h>
 
-byte mac[] = { 0xD4, 0x28, 0xB2, 0xFF, 0xA0, 0xA1 }; // Must be unique on local network
+byte mac[] = { 0xD4, 0x28, 0xB6, 0xFF, 0xA0, 0xA1 }; // Must be unique on local network
  
-//int ledPin = 13;                // choose the pin for the LED
 int inputPin = 2;               // choose the input pin (for PIR sensor)
 int pirState = LOW;             // we start, assuming no motion detected
 int val = 0;                    // variable for reading the pin status
@@ -23,11 +20,11 @@ String thingtweetAPIKey = "4A7JNXU99X5OJGC1";
 long lastConnectionTime = 0; 
 boolean lastConnected = false;
 int failedCounter = 0;
+int messageCounter = 0;
 
 EthernetClient client;
  
 void setup() {
- // pinMode(ledPin, OUTPUT);      // declare LED as output
   pinMode(inputPin, INPUT);     // declare sensor as input
  
   Serial.begin(9600);
@@ -37,59 +34,57 @@ void setup() {
 
   delay(1000);
 
-  updateTwitterStatus("Test started");
+  updateTwitterStatus("Test started-");
+
+  delay(1000);
 }
  
 void loop(){
+  
+val = digitalRead(inputPin);  // read input value
+  if (val == HIGH && !client.connected()) {            // check if the input is HIGH
+    if (pirState == LOW) {       // we have just turned on
+      Serial.println("Motion detected!");
+      updateTwitterStatus("detected motion ");
+      pirState = HIGH;
+    }
+  } else {
+    if (pirState == HIGH){       // we have just turned of
+      Serial.println("Motion ended!");
+      pirState = LOW;
+    }
+  }
+
+  if (!client.connected() && lastConnected)
+  {
+    Serial.println("...disconnected.");
+    Serial.println();
+    
+    client.stop();
+  }
+
+  if (failedCounter > 3 ) 
+  {
+    startEthernet();
+    failedCounter = 0;
+    }
+  
+  lastConnected = client.connected();
 
   if (client.available())
   {
     char c = client.read();
     Serial.print(c);
   }
-  if (!client.connected() && lastConnected)
-  {
-    Serial.println("...disconnected");
-    Serial.println();
-    
-    client.stop();
-  }
-
-   if (failedCounter > 3 ) {startEthernet();}
-  
-  lastConnected = client.connected();
-  
-  
-  val = digitalRead(inputPin);  // read input value
-  if (val == HIGH) {            // check if the input is HIGH
-    if (pirState == LOW) {
-      // we have just turned on
-      Serial.println("Motion detected!");
-      // We only want to print on the output change, not state
-     // if(!client.connected() && (millis() - lastConnectionTime > updateThingSpeakInterval))
-       // {
-      //  updateThingSpeak("field1="+val);
-      updateTwitterStatus("Motion detected in room");
-       // }
-        
-      pirState = HIGH;
-    }
-  } else {
-    if (pirState == HIGH){
-      // we have just turned of
-      Serial.println("Motion ended!");
-      // We only want to print on the output change, not state
-      pirState = LOW;
-    }
-  }
 }
 
 void updateTwitterStatus(String tsData)
 {
-  if (client.connect(thingSpeakAddress, 80))
+  if (client.connect(thingSpeakAddress, 80)&& tsData.length()>0)
   { 
+    messageCounter++;
     // Create HTTP POST Data
-    tsData = "api_key="+thingtweetAPIKey+"&status="+tsData;
+    tsData = "api_key="+thingtweetAPIKey+"&status="+tsData+String(messageCounter);
             
     client.print("POST /apps/thingtweet/1/statuses/update HTTP/1.1\n");
     client.print("Host: api.thingspeak.com\n");
@@ -102,21 +97,6 @@ void updateTwitterStatus(String tsData)
     client.print(tsData);
     
     lastConnectionTime = millis();
-    
-    if (client.connected())
-    {
-      Serial.println("Connecting to ThingSpeak...");
-      Serial.println();
-      
-      failedCounter = 0;
-    }
-    else
-    {
-      failedCounter++;
-  
-      Serial.println("Connection to ThingSpeak failed ("+String(failedCounter, DEC)+")");   
-      Serial.println();
-    }
     
   }
   else
